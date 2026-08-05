@@ -184,14 +184,15 @@
     }
 
     // ---------- API HELPER ----------
+    // Pakai GET (bukan POST) karena Apps Script cross-origin lebih reliable lewat GET
     async function callApi(action, payload) {
       payload = payload || {};
-      payload.action = action;
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight
-        body: JSON.stringify(payload)
+      const params = new URLSearchParams();
+      params.set('action', action);
+      Object.keys(payload).forEach(function (key) {
+        params.set(key, payload[key]);
       });
+      const res = await fetch(API_URL + '?' + params.toString(), { method: 'GET' });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || 'Terjadi kesalahan tidak diketahui.');
       return json.data;
