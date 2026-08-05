@@ -1,30 +1,450 @@
-async function loadBlokTanpaRegistrasi() {
-    try {
-        const response = await callApi('getBlokTanpaRegistrasi');
-        
-        // PENJAGAAN: Pastikan response dari server benar-benar berupa Array.
-        // Jika bukan Array, berarti API bermasalah atau belum di-deploy ulang.
-        if (!Array.isArray(response)) {
-            const errorMsg = (response && response.message) 
-                ? response.message 
-                : 'Format data dari server tidak valid. Pastikan Apps Script sudah di-deploy ulang (New Version)!';
-            throw new Error(errorMsg);
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pengelolaan Blok & Registrasi</title>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --danger: #dc2626;
+            --bg: #f4f6f9;
+            --card: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --muted: #64748b;
         }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 18px 24px;
+        }
+        header h1 { margin: 0; font-size: 20px; }
+        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+        .tab-btn {
+            flex: 1; padding: 12px; border: none; border-radius: 10px;
+            background: var(--card); color: var(--muted); font-weight: 600;
+            cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .tab-btn.active { background: var(--primary); color: white; }
+        .card {
+            background: var(--card); border-radius: 12px; padding: 20px;
+            margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .card h2 { margin-top: 0; font-size: 16px; }
+        .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+        .form-row > div { flex: 1; min-width: 160px; }
+        label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+        input[type=text], select {
+            width: 100%; padding: 10px; border: 1px solid var(--border);
+            border-radius: 8px; font-size: 14px;
+        }
+        button.btn {
+            padding: 10px 16px; border: none; border-radius: 8px;
+            background: var(--primary); color: white; font-weight: 600;
+            cursor: pointer; font-size: 14px;
+        }
+        button.btn:hover { background: var(--primary-dark); }
+        button.btn.secondary { background: #64748b; }
+        button.btn.danger { background: var(--danger); }
+        button.btn.small { padding: 6px 10px; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+        th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+        .actions { display: flex; gap: 6px; }
+        .msg { padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; display: none; }
+        .msg.ok { background: #dcfce7; color: #166534; display: block; }
+        .msg.err { background: #fee2e2; color: #991b1b; display: block; }
+        .hidden { display: none !important; }
+        #qr-reader { width: 100%; max-width: 360px; margin: 10px 0; }
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center; z-index: 50;
+        }
+        .modal-box { background: white; border-radius: 12px; padding: 18px; width: 90%; max-width: 400px; }
+        .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+        .config-warning {
+            background: #fef3c7; color: #92400e; padding: 12px 16px;
+            border-radius: 8px; margin-bottom: 16px; font-size: 13px; display: none;
+        }
+    </style>
+</head>
+<body>
+    <header><h1>Pengelolaan Blok & Registrasi</h1></header>
+    <div class="container">
+        <div class="config-warning" id="configWarning">
+            ⚠️ URL API belum diisi. Buka file ini, cari baris <code>const API_URL</code> di bagian script, lalu isi dengan URL deployment Apps Script kamu (diakhiri <code>/exec</code>).
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" id="tabBtnBlok" onclick="showTab('blok')">Kelola Blok</button>
+            <button class="tab-btn" id="tabBtnRegistrasi" onclick="showTab('registrasi')">Registrasi</button>
+            <button class="tab-btn" id="tabBtnBelum" onclick="showTab('belum')">Blok Belum Registrasi</button>
+        </div>
+
+        <div id="msgBox" class="msg"></div>
+
+        <!-- ================= TAB BLOK ================= -->
+        <div id="tabBlok">
+            <div class="card">
+                <h2 id="blokFormTitle">Tambah Blok</h2>
+                <div class="form-row">
+                    <div>
+                        <label>Kode Blok</label>
+                        <input type="text" id="blokKode" placeholder="Contoh: A-1">
+                    </div>
+                    <div>
+                        <label>Nama</label>
+                        <input type="text" id="blokNama" placeholder="Contoh: A">
+                    </div>
+                </div>
+                <input type="hidden" id="blokEditNo">
+                <button class="btn" onclick="saveBlok()">Simpan</button>
+                <button class="btn secondary hidden" id="btnCancelEditBlok" onclick="cancelEditBlok()">Batal Edit</button>
+            </div>
+            <div class="card">
+                <h2>Daftar Blok</h2>
+                <table>
+                    <thead><tr><th>No</th><th>Blok</th><th>Nama</th><th>Aksi</th></tr></thead>
+                    <tbody id="blokTableBody"></tbody>
+                </table>
+                <div class="empty hidden" id="blokEmpty">Belum ada data blok.</div>
+            </div>
+        </div>
+
+        <!-- ================= TAB REGISTRASI ================= -->
+        <div id="tabRegistrasi" class="hidden">
+            <div class="card">
+                <h2>Pilih Blok</h2>
+                <div class="form-row">
+                    <div>
+                        <label>Blok</label>
+                        <select id="regBlokSelect" onchange="onBlokSelected()">
+                            <option value="">-- Pilih Blok --</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="card hidden" id="regInputCard">
+                <h2>Input Kode untuk Blok: <span id="regBlokLabel"></span></h2>
+                <div class="form-row">
+                    <div>
+                        <label>Kode</label>
+                        <input type="text" id="regKode" placeholder="Scan QR atau ketik manual">
+                    </div>
+                </div>
+                <button class="btn" onclick="openScanner()">Scan QR Code</button>
+                <button class="btn" onclick="submitRegistrasi()">Registrasikan</button>
+            </div>
+            <div class="card hidden" id="regListCard">
+                <h2>Kode Terdaftar di Blok Ini</h2>
+                <table>
+                    <thead><tr><th>No</th><th>Kode</th><th>Waktu</th><th>Aksi</th></tr></thead>
+                    <tbody id="regTableBody"></tbody>
+                </table>
+                <div class="empty hidden" id="regEmpty">Belum ada kode terdaftar untuk blok ini.</div>
+            </div>
+        </div>
+
+        <!-- ================= TAB BLOK BELUM REGISTRASI ================= -->
+        <div id="tabBelum" class="hidden">
+            <div class="card">
+                <h2>Blok yang Belum Ada Kode Terdaftar</h2>
+                <table>
+                    <thead><tr><th>No</th><th>Blok</th><th>Nama</th></tr></thead>
+                    <tbody id="belumTableBody"></tbody>
+                </table>
+                <div class="empty hidden" id="belumEmpty">Semua blok sudah punya kode terdaftar.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Scanner -->
+    <div class="modal-overlay hidden" id="scannerModal">
+        <div class="modal-box">
+            <h2 style="margin-top:0;">Scan QR Code</h2>
+            <div id="qr-reader"></div>
+            <button class="btn secondary" onclick="closeScanner()">Tutup</button>
+        </div>
+    </div>
+
+    <script>
+        // ====================================================================
+        // WAJIB DIISI: paste URL deployment Apps Script kamu di sini
+        // ====================================================================
+        const API_URL = "https://script.google.com/macros/s/AKfycbzE9hzulbQcPVUblPVK5ojJd3twNTFzfzXt_hH2gv0Mq6cPPmKEyqxqd3W_mmIqz-lH/exec";
         
-        const list = response;
-        const body = document.getElementById('belumTableBody');
-        body.innerHTML = '';
-        
-        // Jika list.length > 0, sembunyikan pesan kosong. Jika 0, tampilkan pesan kosong.
-        document.getElementById('belumEmpty').classList.toggle('hidden', list.length > 0);
-        
-        list.forEach(function(r) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = '<td>'+r.no+'</td><td>'+escapeHtml(r.blok)+'</td><td>'+escapeHtml(r.nama)+'</td>';
-            body.appendChild(tr);
-        });
-    } catch (err) { 
-        // Menampilkan pesan error yang jelas di layar jika terjadi masalah
-        showMsg(err.message || 'Gagal memuat data', true); 
-    }
-}
+        let allBlok = [];
+        let selectedBlok = '';
+        let html5QrCode = null;
+
+        if (!API_URL || API_URL.indexOf('PASTE_URL') !== -1) {
+            document.getElementById('configWarning').style.display = 'block';
+        }
+
+        // ------------ API HELPER ----------
+        async function callApi(action, payload) {
+            payload = payload || {};
+            const params = new URLSearchParams();
+            params.set('action', action);
+            Object.keys(payload).forEach(function(key) {
+                params.set(key, payload[key]);
+            });
+            const res = await fetch(API_URL + '?' + params.toString(), { method: 'GET' });
+            const json = await res.json();
+            if (!json.ok) throw new Error(json.error || 'Terjadi kesalahan tidak diketahui.');
+            return json.data;
+        }
+
+        function showMsg(text, isError) {
+            const box = document.getElementById('msgBox');
+            box.textContent = text;
+            box.className = 'msg ' + (isError ? 'err' : 'ok');
+            setTimeout(function() { box.className = 'msg'; }, 4000);
+        }
+
+        function showTab(tab) {
+            document.getElementById('tabBlok').classList.toggle('hidden', tab !== 'blok');
+            document.getElementById('tabRegistrasi').classList.toggle('hidden', tab !== 'registrasi');
+            document.getElementById('tabBelum').classList.toggle('hidden', tab !== 'belum');
+            document.getElementById('tabBtnBlok').classList.toggle('active', tab === 'blok');
+            document.getElementById('tabBtnRegistrasi').classList.toggle('active', tab === 'registrasi');
+            document.getElementById('tabBtnBelum').classList.toggle('active', tab === 'belum');
+            
+            if (tab === 'registrasi') refreshBlokSelect();
+            if (tab === 'belum') loadBlokTanpaRegistrasi();
+        }
+
+        // ------------ PERBAIKAN TAB BELUM REGISTRASI ----------
+        async function loadBlokTanpaRegistrasi() {
+            try {
+                const response = await callApi('getBlokTanpaRegistrasi');
+                
+                // PENJAGAAN: Pastikan response dari server benar-benar berupa Array.
+                if (!Array.isArray(response)) {
+                    const errorMsg = (response && response.message) 
+                        ? response.message 
+                        : 'Format data dari server tidak valid. Pastikan Apps Script sudah di-deploy ulang (New Version)!';
+                    throw new Error(errorMsg);
+                }
+                
+                const list = response;
+                const body = document.getElementById('belumTableBody');
+                body.innerHTML = '';
+                
+                document.getElementById('belumEmpty').classList.toggle('hidden', list.length > 0);
+                
+                list.forEach(function(r) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = '<td>'+r.no+'</td><td>'+escapeHtml(r.blok)+'</td><td>'+escapeHtml(r.nama)+'</td>';
+                    body.appendChild(tr);
+                });
+            } catch (err) { 
+                showMsg(err.message || 'Gagal memuat data', true); 
+            }
+        }
+
+        // ------------ BLOK ----------
+        async function loadBlok() {
+            try {
+                const list = await callApi('getBlokList');
+                renderBlokTable(list);
+            } catch (err) { showMsg(err.message, true); }
+        }
+
+        function renderBlokTable(list) {
+            allBlok = list;
+            const body = document.getElementById('blokTableBody');
+            body.innerHTML = '';
+            document.getElementById('blokEmpty').classList.toggle('hidden', list.length > 0);
+            list.forEach(function(r) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = 
+                    '<td>'+r.no+'</td><td>'+escapeHtml(r.blok)+'</td><td>'+escapeHtml(r.nama)+'</td>'+
+                    '<td class="actions">'+
+                    '<button class="btn small" onclick="editBlok('+r.no+')">Edit</button>'+
+                    '<button class="btn small danger" onclick="removeBlok('+r.no+')">Hapus</button>'+
+                    '</td>';
+                body.appendChild(tr);
+            });
+        }
+
+        async function saveBlok() {
+            const kode = document.getElementById('blokKode').value.trim();
+            const nama = document.getElementById('blokNama').value.trim();
+            const editNo = document.getElementById('blokEditNo').value;
+            if (!kode) { showMsg('Kode Blok wajib diisi.', true); return; }
+            try {
+                if (editNo) {
+                    await callApi('updateBlok', { no: editNo, blok: kode, nama: nama });
+                    showMsg('Blok berhasil diperbarui.');
+                    cancelEditBlok();
+                } else {
+                    await callApi('addBlok', { blok: kode, nama: nama });
+                    showMsg('Blok berhasil ditambahkan.');
+                    document.getElementById('blokKode').value = '';
+                    document.getElementById('blokNama').value = '';
+                }
+                loadBlok();
+            } catch (err) { showMsg(err.message, true); }
+        }
+
+        function editBlok(no) {
+            const r = allBlok.find(function(x) { return Number(x.no) === Number(no); });
+            if (!r) return;
+            document.getElementById('blokKode').value = r.blok;
+            document.getElementById('blokNama').value = r.nama;
+            document.getElementById('blokEditNo').value = r.no;
+            document.getElementById('blokFormTitle').textContent = 'Edit Blok';
+            document.getElementById('btnCancelEditBlok').classList.remove('hidden');
+        }
+
+        function cancelEditBlok() {
+            document.getElementById('blokKode').value = '';
+            document.getElementById('blokNama').value = '';
+            document.getElementById('blokEditNo').value = '';
+            document.getElementById('blokFormTitle').textContent = 'Tambah Blok';
+            document.getElementById('btnCancelEditBlok').classList.add('hidden');
+        }
+
+        async function removeBlok(no) {
+            if (!confirm('Hapus blok ini?')) return;
+            try {
+                await callApi('deleteBlok', { no: no });
+                showMsg('Blok berhasil dihapus.');
+                loadBlok();
+            } catch (err) { showMsg(err.message, true); }
+        }
+
+        // ------------ REGISTRASI ----------
+        async function refreshBlokSelect() {
+            try {
+                const list = await callApi('getBlokList');
+                allBlok = list;
+                const sel = document.getElementById('regBlokSelect');
+                const current = sel.value;
+                sel.innerHTML = '<option value="">-- Pilih Blok --</option>';
+                list.forEach(function(r) {
+                    const opt = document.createElement('option');
+                    opt.value = r.blok;
+                    opt.textContent = r.blok + (r.nama ? ' - ' + r.nama : '');
+                    sel.appendChild(opt);
+                });
+                if (current) sel.value = current;
+            } catch (err) { showMsg(err.message, true); }
+        }
+
+        function onBlokSelected() {
+            const sel = document.getElementById('regBlokSelect');
+            selectedBlok = sel.value;
+            const show = !!selectedBlok;
+            document.getElementById('regInputCard').classList.toggle('hidden', !show);
+            document.getElementById('regListCard').classList.toggle('hidden', !show);
+            document.getElementById('regBlokLabel').textContent = selectedBlok;
+            document.getElementById('regKode').value = '';
+            if (show) loadRegistrasiForBlok();
+        }
+
+        async function loadRegistrasiForBlok() {
+            try {
+                const list = await callApi('getRegistrasiByBlok', { blok: selectedBlok });
+                renderRegTable(list);
+            } catch (err) { showMsg(err.message, true); }
+        }
+
+        function renderRegTable(list) {
+            const body = document.getElementById('regTableBody');
+            body.innerHTML = '';
+            document.getElementById('regEmpty').classList.toggle('hidden', list.length > 0);
+            list.forEach(function(r) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = 
+                    '<td>'+r.no+'</td><td>'+escapeHtml(r.kode)+'</td><td>'+escapeHtml(r.waktu)+'</td>'+
+                    '<td class="actions"><button class="btn small danger" onclick="removeRegistrasi('+r.no+')">Hapus</button></td>';
+                body.appendChild(tr);
+            });
+        }
+
+        async function submitRegistrasi() {
+            const kode = document.getElementById('regKode').value.trim();
+            if (!selectedBlok) { showMsg('Pilih blok terlebih dahulu.', true); return; }
+            if (!kode) { showMsg('Kode wajib diisi.', true); return; }
+            try {
+                await callApi('addRegistrasi', { blok: selectedBlok, kode: kode });
+                showMsg('Kode berhasil diregistrasikan.');
+                document.getElementById('regKode').value = '';
+                loadRegistrasiForBlok();
+            } catch (err) { showMsg(err.message, true); }
+        }
+
+        async function removeRegistrasi(no) {
+            if (!confirm('Hapus data registrasi ini?')) return;
+            try {
+                await callApi('deleteRegistrasi', { no: no });
+                showMsg('Data registrasi berhasil dihapus.');
+                loadRegistrasiForBlok();
+            } catch (err) { showMsg(err.message, true); }
+        }
+
+        // ------------ SCANNER ----------
+        function openScanner() {
+            document.getElementById('scannerModal').classList.remove('hidden');
+            html5QrCode = new Html5Qrcode("qr-reader");
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: 220 },
+                function(decodedText) {
+                    document.getElementById('regKode').value = decodedText;
+                    closeScanner();
+                },
+                function() { /* ignore per-frame scan errors */ }
+            ).catch(function(err) {
+                showMsg('Tidak bisa mengakses kamera: ' + err, true);
+                closeScanner();
+            });
+        }
+
+        function closeScanner() {
+            document.getElementById('scannerModal').classList.add('hidden');
+            if (html5QrCode) {
+                html5QrCode.stop().catch(function() {}).finally(function() {
+                    html5QrCode.clear();
+                    html5QrCode = null;
+                });
+            }
+        }
+
+        function requestCameraPermission() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function(stream) {
+                    stream.getTracks().forEach(function(track) { track.stop(); });
+                })
+                .catch(function(err) {
+                    console.log('Izin kamera belum diberikan:', err.name);
+                });
+        }
+
+        // ------------ HELPERS ----------
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, function(c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        // init
+        loadBlok();
+        requestCameraPermission();
+    </script>
+</body>
+</html>
