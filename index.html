@@ -36,7 +36,7 @@
         .actions { display:flex; gap:6px; }
         .msg { padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:14px; display:none; }
         .msg.ok { background:#dcfce7; color:#166534; display:block; }
-        .msg.err { background:#fee2e2; color:#991b1b; display:block; }
+        .msg.err { background: #fee2e2; color:#991b1b; display:block; }
         .hidden { display:none !important; }
         #qr-reader { width:100%; max-width:360px; margin:10px 0; }
         .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; }
@@ -93,7 +93,8 @@
             </div>
             <div class="card hidden" id="regListCard">
                 <h2>Kode Terdaftar di Blok Ini</h2>
-                <table><thead><tr><th>No</th><th>Kode</th><th>Waktu</th><th>Aksi</th></tr></thead><tbody id="regTableBody"></tbody></table>
+                <!-- Kolom No & Aksi dihilangkan: hanya Kode dan Waktu -->
+                <table><thead><tr><th>Kode</th><th>Waktu</th></tr></thead><tbody id="regTableBody"></tbody></table>
                 <div class="empty hidden" id="regEmpty">Belum ada kode terdaftar untuk blok ini.</div>
             </div>
         </div>
@@ -131,7 +132,6 @@
             const params = new URLSearchParams();
             params.set('action', action);
             Object.keys(payload).forEach(function(key) { params.set(key, payload[key]); });
-            // ANTI-CACHE: timestamp unik agar browser/server tidak mengembalikan data lama
             params.set('_t', Date.now().toString());
             const res = await fetch(API_URL + '?' + params.toString(), { method: 'GET', cache: 'no-store' });
             const json = await res.json();
@@ -139,7 +139,7 @@
             return json.data;
         }
 
-        // ---------- NORMALISASI KODE (ANTI-KEBOBOLAN) ----------
+        // ---------- NORMALISASI KODE ----------
         function normalizeKode(v) {
             if (v === null || v === undefined) return '';
             return String(v).replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim().toLowerCase();
@@ -147,7 +147,6 @@
         function sameKode(a, b) {
             const na = normalizeKode(a), nb = normalizeKode(b);
             if (na === nb) return true;
-            // Bandingkan sebagai angka juga (misal "0863" vs "863")
             if (na !== '' && nb !== '') {
                 const xa = Number(na), xb = Number(nb);
                 if (!isNaN(xa) && !isNaN(xb)) return xa === xb;
@@ -307,14 +306,14 @@
             catch (err) { showMsg(err.message, true); }
         }
 
+        // Tabel registrasi: hanya menampilkan kolom KODE dan WAKTU
         function renderRegTable(list) {
             const body = document.getElementById('regTableBody');
             body.innerHTML = '';
             document.getElementById('regEmpty').classList.toggle('hidden', list.length > 0);
             list.forEach(function(r) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td>' + r.no + '</td><td>' + escapeHtml(r.kode) + '</td><td>' + escapeHtml(formatWaktu(r.waktu)) + '</td>' +
-                    '<td class="actions"><button class="btn small danger" onclick="removeRegistrasi(' + r.no + ')">Hapus</button></td>';
+                tr.innerHTML = '<td>' + escapeHtml(r.kode) + '</td><td>' + escapeHtml(formatWaktu(r.waktu)) + '</td>';
                 body.appendChild(tr);
             });
         }
@@ -326,10 +325,9 @@
             if (!kode) { showMsg('Kode wajib diisi.', true); return; }
 
             const btn = document.getElementById('btnSubmitReg');
-            btn.disabled = true; // Kunci tombol agar tidak bisa double-klik
+            btn.disabled = true;
 
             try {
-                // Ambil data TERBARU dari server (dengan anti-cache)
                 const currentList = await callApi('getRegistrasiList');
                 const dup = currentList.some(function(r) { return sameKode(r.kode, kode); });
 
@@ -345,10 +343,11 @@
             } catch (err) {
                 showMsg(err.message, true);
             } finally {
-                btn.disabled = false; // Buka kunci tombol
+                btn.disabled = false;
             }
         }
 
+        // Fungsi hapus registrasi tetap disimpan (untuk kebutuhan di masa depan)
         async function removeRegistrasi(no) {
             if (!confirm('Hapus data registrasi ini?')) return;
             try {
