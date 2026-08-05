@@ -89,6 +89,7 @@
     <div class="tabs">
       <button class="tab-btn active" id="tabBtnBlok" onclick="showTab('blok')">Kelola Blok</button>
       <button class="tab-btn" id="tabBtnRegistrasi" onclick="showTab('registrasi')">Registrasi</button>
+      <button class="tab-btn" id="tabBtnBelum" onclick="showTab('belum')">Blok Belum Registrasi</button>
     </div>
 
     <div id="msgBox" class="msg"></div>
@@ -157,6 +158,18 @@
         <div class="empty hidden" id="regEmpty">Belum ada kode terdaftar untuk blok ini.</div>
       </div>
     </div>
+
+    <!-- ================= TAB BLOK BELUM REGISTRASI ================= -->
+    <div id="tabBelum" class="hidden">
+      <div class="card">
+        <h2>Blok yang Belum Ada Kode Terdaftar</h2>
+        <table>
+          <thead><tr><th>No</th><th>Blok</th><th>Nama</th></tr></thead>
+          <tbody id="belumTableBody"></tbody>
+        </table>
+        <div class="empty hidden" id="belumEmpty">Semua blok sudah punya kode terdaftar.</div>
+      </div>
+    </div>
   </div>
 
   <!-- Modal Scanner -->
@@ -208,9 +221,26 @@
     function showTab(tab) {
       document.getElementById('tabBlok').classList.toggle('hidden', tab !== 'blok');
       document.getElementById('tabRegistrasi').classList.toggle('hidden', tab !== 'registrasi');
+      document.getElementById('tabBelum').classList.toggle('hidden', tab !== 'belum');
       document.getElementById('tabBtnBlok').classList.toggle('active', tab === 'blok');
       document.getElementById('tabBtnRegistrasi').classList.toggle('active', tab === 'registrasi');
+      document.getElementById('tabBtnBelum').classList.toggle('active', tab === 'belum');
       if (tab === 'registrasi') refreshBlokSelect();
+      if (tab === 'belum') loadBlokTanpaRegistrasi();
+    }
+
+    async function loadBlokTanpaRegistrasi() {
+      try {
+        const list = await callApi('getBlokTanpaRegistrasi');
+        const body = document.getElementById('belumTableBody');
+        body.innerHTML = '';
+        document.getElementById('belumEmpty').classList.toggle('hidden', list.length > 0);
+        list.forEach(function (r) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + r.no + '</td><td>' + escapeHtml(r.blok) + '</td><td>' + escapeHtml(r.nama) + '</td>';
+          body.appendChild(tr);
+        });
+      } catch (err) { showMsg(err.message, true); }
     }
 
     // ---------- BLOK ----------
