@@ -189,7 +189,8 @@
             <div class="card">
                 <h2>Blok yang Belum Ada Kode Terdaftar</h2>
                 <table>
-                    <thead><tr><th>No</th><th>Blok</th><th>Nama</th></tr></thead>
+                    <!-- Kolom "No" sudah dihilangkan di sini -->
+                    <thead><tr><th>Blok</th><th>Nama</th></tr></thead>
                     <tbody id="belumTableBody"></tbody>
                 </table>
                 <div class="empty hidden" id="belumEmpty">Semua blok sudah punya kode terdaftar.</div>
@@ -215,7 +216,7 @@
         let allBlok = [];
         let selectedBlok = '';
         let html5QrCode = null;
-        let allRegistrasi = []; // Cache data registrasi untuk cek duplikasi
+        let allRegistrasi = [];
 
         if (!API_URL || API_URL.indexOf('PASTE_URL') !== -1) {
             document.getElementById('configWarning').style.display = 'block';
@@ -252,7 +253,7 @@
             
             if (tab === 'registrasi') {
                 refreshBlokSelect();
-                loadAllRegistrasi(); // Ambil semua data untuk validasi duplikasi
+                loadAllRegistrasi();
             }
             if (tab === 'belum') loadBlokTanpaRegistrasi();
         }
@@ -260,7 +261,6 @@
         // ------------ FUNGSI FORMAT WAKTU ----------
         function formatWaktu(w) {
             if (!w) return '';
-            // Cek jika format ISO string (misal: "2026-08-05T03:00:00.000Z")
             if (typeof w === 'string' && (w.includes('T') || w.includes('-'))) {
                 const d = new Date(w);
                 if (!isNaN(d.getTime())) {
@@ -273,7 +273,7 @@
                     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
                 }
             }
-            return w; // Kembalikan apa adanya jika sudah terformat
+            return w;
         }
 
         // ------------ BLOK BELUM REGISTRASI ----------
@@ -290,7 +290,8 @@
                 document.getElementById('belumEmpty').classList.toggle('hidden', list.length > 0);
                 list.forEach(function(r) {
                     const tr = document.createElement('tr');
-                    tr.innerHTML = '<td>'+r.no+'</td><td>'+escapeHtml(r.blok)+'</td><td>'+escapeHtml(r.nama)+'</td>';
+                    // Kolom "No" sudah dihilangkan
+                    tr.innerHTML = '<td>'+escapeHtml(r.blok)+'</td><td>'+escapeHtml(r.nama)+'</td>';
                     body.appendChild(tr);
                 });
             } catch (err) { showMsg(err.message || 'Gagal memuat data', true); }
@@ -384,7 +385,6 @@
                 const sel = document.getElementById('regBlokSelect');
                 const current = sel.value;
                 
-                // Hancurkan instance select2 sebelumnya jika ada
                 if ($(sel).hasClass("select2-hidden-accessible")) {
                     $(sel).select2('destroy');
                 }
@@ -399,13 +399,11 @@
                 
                 if (current) sel.value = current;
 
-                // Inisialisasi Select2 (Dropdown Searchable)
                 $(sel).select2({
                     placeholder: "Ketik untuk mencari blok...",
                     allowClear: true
                 });
                 
-                // Event listener untuk Select2
                 $(sel).off('change').on('change', function() {
                     onBlokSelected();
                 });
@@ -437,7 +435,6 @@
             document.getElementById('regEmpty').classList.toggle('hidden', list.length > 0);
             list.forEach(function(r) {
                 const tr = document.createElement('tr');
-                // Menggunakan formatWaktu agar tampilan tanggal rapi
                 tr.innerHTML = 
                     '<td>'+r.no+'</td><td>'+escapeHtml(r.kode)+'</td><td>'+escapeHtml(formatWaktu(r.waktu))+'</td>'+
                     '<td class="actions"><button class="btn small danger" onclick="removeRegistrasi('+r.no+')">Hapus</button></td>';
@@ -445,31 +442,47 @@
             });
         }
 
+        // ------------ PERBAIKAN LOGIKA SUBMIT REGISTRASI ----------
         async function submitRegistrasi() {
             const kode = document.getElementById('regKode').value.trim();
             if (!selectedBlok) { showMsg('Pilih blok terlebih dahulu.', true); return; }
             if (!kode) { showMsg('Kode wajib diisi.', true); return; }
 
-            // LOGIKA CEK DUPLIKASI DI FRONTEND
-            const kodeLower = kode.toLowerCase();
-            const isExist = allRegistrasi.some(function(r) {
+            // Bersihkan kode dari karakter whitespace tak terlihat (sering ada di hasil scan QR)
+            const cleanKode = kode.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+            const kodeLower = cleanKode.toLowerCase();
+
+            // SELALU ambil data terbaru dari server untuk validasi duplikasi yang akurat
+            // Ini memastikan cek duplikasi bekerja baik untuk input manual maupun scan QR
+            let currentList = [];
+            try {
+                currentList = await callApi('getRegistrasiList');
+            } catch (err) {
+                showMsg('Gagal memeriksa duplikasi: ' + err.message, true);
+                return;
+            }
+
+            const isExist = currentList.some(function(r) {
                 return r.kode && r.kode.toString().trim().toLowerCase() === kodeLower;
             });
 
             if (isExist) {
-                showMsg('❌ Kode "' + kode + '" sudah terdaftar sebelumnya. Sistem menolak pendaftaran.', true);
-                return; // Hentikan proses, jangan kirim ke server
+                showMsg('❌ Kode "' + cleanKode + '" sudah terdaftar sebelumnya. Sistem menolak pendaftaran.', true);
+                return;
             }
 
             try {
-                await callApi('addRegistrasi', { blok: selectedBlok, kode: kode });
+                await callApi('addRegistrasi', { blok: selectedBlok, kode: cleanKode });
                 showMsg('Kode berhasil diregistrasikan.');
                 document.getElementById('regKode').value = '';
                 
-                // Refresh cache lokal dan tabel
-                await loadAllRegistrasi(); 
+                // Perbarui cache lokal dan refresh tabel
+                allRegistrasi = currentList;
+                allRegistrasi.push({no: -1, blok: selectedBlok, kode: cleanKode, waktu: new Date().toISOString()});
                 loadRegistrasiForBlok();
-            } catch (err) { showMsg(err.message, true); }
+            } catch (err) { 
+                showMsg(err.message, true); 
+            }
         }
 
         async function removeRegistrasi(no) {
@@ -477,7 +490,7 @@
             try {
                 await callApi('deleteRegistrasi', { no: no });
                 showMsg('Data registrasi berhasil dihapus.');
-                await loadAllRegistrasi(); // Update cache lokal
+                await loadAllRegistrasi();
                 loadRegistrasiForBlok();
             } catch (err) { showMsg(err.message, true); }
         }
