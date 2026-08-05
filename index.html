@@ -36,7 +36,7 @@
         .actions { display:flex; gap:6px; }
         .msg { padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:14px; display:none; }
         .msg.ok { background:#dcfce7; color:#166534; display:block; }
-        .msg.err { background: #fee2e2; color:#991b1b; display:block; }
+        .msg.err { background:#fee2e2; color:#991b1b; display:block; }
         .hidden { display:none !important; }
         #qr-reader { width:100%; max-width:360px; margin:10px 0; }
         .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; }
@@ -93,8 +93,8 @@
             </div>
             <div class="card hidden" id="regListCard">
                 <h2>Kode Terdaftar di Blok Ini</h2>
-                <!-- Kolom No & Aksi dihilangkan: hanya Kode dan Waktu -->
-                <table><thead><tr><th>Kode</th><th>Waktu</th></tr></thead><tbody id="regTableBody"></tbody></table>
+                <!-- Kolom: Kode | Waktu | Aksi -->
+                <table><thead><tr><th>Kode</th><th>Waktu</th><th>Aksi</th></tr></thead><tbody id="regTableBody"></tbody></table>
                 <div class="empty hidden" id="regEmpty">Belum ada kode terdaftar untuk blok ini.</div>
             </div>
         </div>
@@ -306,14 +306,15 @@
             catch (err) { showMsg(err.message, true); }
         }
 
-        // Tabel registrasi: hanya menampilkan kolom KODE dan WAKTU
+        // Tabel registrasi: Kode | Waktu | Aksi
         function renderRegTable(list) {
             const body = document.getElementById('regTableBody');
             body.innerHTML = '';
             document.getElementById('regEmpty').classList.toggle('hidden', list.length > 0);
             list.forEach(function(r) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td>' + escapeHtml(r.kode) + '</td><td>' + escapeHtml(formatWaktu(r.waktu)) + '</td>';
+                tr.innerHTML = '<td>' + escapeHtml(r.kode) + '</td><td>' + escapeHtml(formatWaktu(r.waktu)) + '</td>' +
+                    '<td class="actions"><button class="btn small danger" onclick="removeRegistrasi(' + r.no + ')">Hapus</button></td>';
                 body.appendChild(tr);
             });
         }
@@ -347,7 +348,6 @@
             }
         }
 
-        // Fungsi hapus registrasi tetap disimpan (untuk kebutuhan di masa depan)
         async function removeRegistrasi(no) {
             if (!confirm('Hapus data registrasi ini?')) return;
             try {
